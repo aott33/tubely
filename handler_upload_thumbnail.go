@@ -73,5 +73,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	    return
 	}
 
+	fmt.Println("Successful thumbnail upload for video", videoID, "by user", userID)
+	
 	respondWithJSON(w, http.StatusOK, videoMetaData)
 }
