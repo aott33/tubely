@@ -18,6 +18,8 @@ import (
 const maxMemory = 10 << 20
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("File upload starting")
+
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
@@ -51,6 +53,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	    return
 	}
 
+	defer file.Close()
+
 	videoMetaData, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 	    respondWithError(w, http.StatusInternalServerError, "DB - GetVideo Error", err)
@@ -58,7 +62,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	if userID != videoMetaData.UserID {
-		respondWithError(w, http.StatusUnauthorized, "User Validation Error", err)
+		respondWithError(w, http.StatusUnauthorized, "User Validation Error", nil)
 	    return
 	}
 
@@ -71,7 +75,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	if mediaType != "image/jpeg" && mediaType != "image/png" {
-		respondWithError(w, http.StatusInternalServerError, "Incorrect media type error", err)
+		respondWithError(w, http.StatusInternalServerError, "Incorrect media type error", nil)
 	    return	
 	}
 
