@@ -1,10 +1,15 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -46,10 +51,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	    return
 	}
 
-	mediaType := handler.Header.Get("Content-Type")
-
-	dat, err := io.ReadAll(file)
-
 	videoMetaData, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 	    respondWithError(w, http.StatusInternalServerError, "DB - GetVideo Error", err)
@@ -61,9 +62,40 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	    return
 	}
 
-	imageString := base64.StdEncoding.EncodeToString(dat)
+	contentTypeHeader := handler.Header.Get("Content-Type")
 
-	thumbnailURL := fmt.Sprintf("data:%s;base64,%s", mediaType, imageString)
+	mediaType, _, err := mime.ParseMediaType(contentTypeHeader)
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "Parse media type error", err)
+	    return
+	}
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusInternalServerError, "Incorrect media type error", err)
+	    return	
+	}
+
+	key := make([]byte, 32)
+	rand.Read(key)
+	randFilename := base64.URLEncoding.EncodeToString(key)
+
+	fileExtension := strings.Split(mediaType, "/")[1]
+	filenameWithExt := fmt.Sprintf("%s.%s", randFilename, fileExtension)
+	filepathString := filepath.Join(cfg.assetsRoot, filenameWithExt)
+
+	thumbnailFile, err := os.Create(filepathString)
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "File creation error", err)
+	    return
+	}
+
+	_, err = io.Copy(thumbnailFile, file)
+	if err != nil {
+	    respondWithError(w, http.StatusInternalServerError, "File copy error", err)
+	    return
+	}
+
+	thumbnailURL := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, filenameWithExt)
 
 	videoMetaData.ThumbnailURL = &thumbnailURL
 
