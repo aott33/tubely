@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -18,9 +19,13 @@ import (
 	"github.com/google/uuid"
 )
 
-type videoRatio struct {
+type Streams struct {
 	Width	int `json:"width"`
 	Height	int `json:"height"`
+}
+
+type ffprobeOutput struct {
+	Streams	[]Streams `json:"streams"`
 }
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
@@ -100,11 +105,27 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	aspectRatio, err := getVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get aspect ratio", err)
+		return
+	}
+
+	fmt.Println("Aspect Ration", aspectRatio)
+
+	ratioType := "other"
+
+	if aspectRatio == "16:9" {
+		ratioType = "landscape"
+	} else if aspectRatio == "9:16" {
+		ratioType = "portrait"
+	}
+
 	key := make([]byte, 32)
 	rand.Read(key)
 	randFilename := hex.EncodeToString(key)
 	fileExtension := strings.Split(mediaType, "/")[1]
-	filenameWithExt := fmt.Sprintf("%s.%s", randFilename, fileExtension)
+	filenameWithExt := fmt.Sprintf("%s/%s.%s", ratioType, randFilename, fileExtension)
 
 	_, err = cfg.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: 		&cfg.s3Bucket,
@@ -132,6 +153,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 }
 
 func getVideoAspectRatio(filePath string) (string, error) {
+	var ratioString string
+	tolerance := 10
+
 	var b bytes.Buffer
 	cmd := exec.Command(
 		"ffprobe",
@@ -139,6 +163,7 @@ func getVideoAspectRatio(filePath string) (string, error) {
 		"error",
 		"-print_format",
 		"json",
+		"-show_streams",
 		filePath,
 	)
 
@@ -149,7 +174,43 @@ func getVideoAspectRatio(filePath string) (string, error) {
 		return "", err
 	}
 
+	var ffprobeOutput ffprobeOutput
 
+	err = json.Unmarshal(b.Bytes(), &ffprobeOutput)
+	if err != nil {
+		return "", err
+	}
 
-	return "", nil
+	if len(ffprobeOutput.Streams) == 0 {
+		return "", fmt.Errorf("No Streams")
+	}
+
+	width := ffprobeOutput.Streams[0].Width
+	height := ffprobeOutput.Streams[0].Height
+	
+	w9 := width * 9
+	h16 := height * 16
+	
+	w16 := width * 16
+	h9 := height * 9
+
+	diff16x9 := w9 - h16
+	if diff16x9 < 0 {
+    	diff16x9 = -diff16x9
+	}
+
+	diff9x16 := w16 - h9
+	if diff9x16 < 0 {
+    	diff9x16 = -diff9x16
+	}
+
+	if diff16x9 < tolerance {
+    	ratioString = "16:9"
+	} else if diff9x16 < tolerance {
+    	ratioString = "9:16"
+	} else {
+    	ratioString = "other"
+	}
+
+	return ratioString, nil
 }
