@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,12 +10,18 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
+
+type videoRatio struct {
+	Width	int `json:"width"`
+	Height	int `json:"height"`
+}
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<30)
@@ -122,4 +129,27 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	
 	respondWithJSON(w, http.StatusOK, videoMetaData)
 
+}
+
+func getVideoAspectRatio(filePath string) (string, error) {
+	var b bytes.Buffer
+	cmd := exec.Command(
+		"ffprobe",
+		"-v",
+		"error",
+		"-print_format",
+		"json",
+		filePath,
+	)
+
+	cmd.Stdout = &b
+
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+
+
+	return "", nil
 }
